@@ -129,4 +129,4 @@ macro_rules! combine_modules {
     };
 }
 
-combine_modules!(number, list);
+combine_modules!(number, list, string);

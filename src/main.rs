@@ -14,15 +14,15 @@ fn main() {
         number::Ir::Const(number::Value::Float(1.0)).into_enum_box(),
         number::Ir::Const(number::Value::Float(2.0)).into_enum_box(),
     );
-    let ir = list::Ir::Push {
-        list: list::Ir::Push {
-            list: list::Ir::NewList {}.into_enum_box(),
-            element: element1.into_enum_box(),
-        }
-        .into_enum_box(),
-        element: element2.into_enum_box(),
+    let element3 = string::Ir::Literal(string::Value("hello, world".to_owned()));
+    let ir = list::Ir::MakeList {
+        elements: vec![
+            element1.into_enum(),
+            element2.into_enum(),
+            element3.into_enum(),
+        ],
     };
-    // ir = push(push([], 123), 1.0 + 2.0)
+    // ir = make_list(123, 1.0 + 2.0, "hello, world")
 
     let ir: kast::Ir = ir.into_enum();
 

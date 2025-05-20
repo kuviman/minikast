@@ -1,24 +1,19 @@
 use super::*;
 
 pub enum Ir<K: Kast> {
-    NewList {},
-    Push {
-        list: Box<K::Ir>,
-        element: Box<K::Ir>,
-    },
+    MakeList { elements: Vec<K::Ir> },
 }
 
 impl<K: Kast> core::Ir<K> for Ir<K> {
     fn eval(ir: &Self, cx: &mut K::InterpreterContext) -> K::Value {
         match ir {
-            Ir::NewList {} => Value { elements: vec![] }.into_enum(),
-            Ir::Push { list, element } => {
-                let list = K::eval(list, cx);
-                let mut list = list.into_variant().expect("expected a list");
-                let value = K::eval(element, cx);
-                list.elements.push(value);
-                list.into_enum()
+            Ir::MakeList { elements } => Value {
+                elements: elements
+                    .iter()
+                    .map(|element| K::eval(element, cx))
+                    .collect(),
             }
+            .into_enum(),
         }
     }
 }
@@ -40,10 +35,10 @@ impl<K: Kast> core::InterpreterContext<K> for InterpreterContext {
 
 pub trait Kast:
     core::Kast<
-    Ir: HasVariant<Ir<Self>>,
-    Value: HasVariant<Value<Self>>,
-    InterpreterContext: HasField<InterpreterContext>,
->
+        Ir: HasVariant<Ir<Self>>,
+        Value: HasVariant<Value<Self>>,
+        InterpreterContext: HasField<InterpreterContext>,
+    >
 {
 }
 
