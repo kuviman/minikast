@@ -11,16 +11,21 @@ let add : mulable -> mulable -> mulable =
   | Int a, Int b -> Int (a + b)
 
 module Dep = struct
-  module type Value = sig
-    type t
-
-    val into_mulable : t -> mulable
-    val from_mulable : mulable -> t
-  end
-
   module type Kast = sig
-    module Value : Value
-    include Abstract.Kast with module Value := Value
+    module Value : sig
+      type t
+
+      val into_mulable : t -> mulable
+      val from_mulable : mulable -> t
+    end
+
+    module Expr : sig
+      type t
+    end
+
+    module Interpreter : sig
+      val eval : Expr.t -> Value.t
+    end
   end
 end
 

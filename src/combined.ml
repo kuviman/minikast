@@ -8,8 +8,11 @@ and Value : sig
     | String of Parts.String.Value.t
     | Error of Error.Value.t
 
-  include Parts.Add.Dep.Value with type t := t
-  include Parts.Mul.Dep.Value with type t := t
+  val into_addable : t -> Parts.Add.addable
+  val from_addable : Parts.Add.addable -> t
+  val into_mulable : t -> Parts.Mul.mulable
+  val from_mulable : Parts.Mul.mulable -> t
+
   include Printable with type t := t
 end = struct
   type t =
@@ -84,8 +87,10 @@ and Kast : sig
   module Value : sig
     type t
 
-    include Parts.Add.Dep.Value with type t := t
-    include Parts.Mul.Dep.Value with type t := t
+    val into_addable : t -> Parts.Add.addable
+    val from_addable : Parts.Add.addable -> t
+    val into_mulable : t -> Parts.Mul.mulable
+    val from_mulable : Parts.Mul.mulable -> t
   end
 
   module Expr : sig

@@ -1,7 +1,17 @@
 open Prelude
 
+module Dep = struct
+  module type Value = sig
+    type t
+  end
+
+  module type Kast = sig
+    module Value : Value
+  end
+end
+
 module type S = sig
-  module K : Abstract.Kast
+  module K : Dep.Kast
 
   module Expr : sig
     type t = { value : K.Value.t }
@@ -10,7 +20,7 @@ module type S = sig
   val eval : Expr.t -> K.Value.t
 end
 
-module Make (K : Abstract.Kast) : S with module K = K = struct
+module Make (K : Dep.Kast) : S with module K = K = struct
   module K = K
 
   module Expr = struct
