@@ -22,11 +22,18 @@ type formatter = Format.formatter
 let fprintf = Format.fprintf
 
 module Abstract = struct
-  module type Interpreter = sig
-    type value
-    type expr
+  module type Kast = sig
+    module Value : sig
+      type t
+    end
 
-    val eval : expr -> value
+    module Expr : sig
+      type t
+    end
+
+    module Interpreter : sig
+      val eval : Expr.t -> Value.t
+    end
   end
 end
 
@@ -41,10 +48,24 @@ end
 
 module Parts = struct
   module Const = struct
-    module Expr = struct
-      type 'v t = { value : 'v }
+    module type S = sig
+      module K : Abstract.Kast
 
-      let eval : 'v t -> 'v = fun { value } -> value
+      module Expr : sig
+        type t = { value : K.Value.t }
+      end
+
+      val eval : Expr.t -> K.Value.t
+    end
+
+    module Make (K : Abstract.Kast) : S with module K = K = struct
+      module K = K
+
+      module Expr = struct
+        type t = { value : K.Value.t }
+      end
+
+      let eval : Expr.t -> K.Value.t = fun { value } -> value
     end
   end
 
@@ -68,41 +89,49 @@ module Parts = struct
       | Error _, _ | _, Error _ -> Error (Error.Value.make ())
       | Int a, Int b -> Int (a + b)
 
-    module type ValueS = sig
-      type t
+    module Dep = struct
+      module type Value = sig
+        type t
 
-      val into_addable : t -> addable
-      val from_addable : addable -> t
+        val into_addable : t -> addable
+        val from_addable : addable -> t
+      end
+
+      module type Kast = sig
+        module Value : Value
+        include Abstract.Kast with module Value := Value
+      end
     end
 
     module type S = sig
-      module I : Abstract.Interpreter
+      module K : Dep.Kast
 
       module Expr : sig
         type t = {
-          lhs : I.expr;
-          rhs : I.expr;
+          lhs : K.Expr.t;
+          rhs : K.Expr.t;
         }
       end
 
-      val eval : Expr.t -> I.value
+      val eval : Expr.t -> K.Value.t
     end
 
-    module Make (I : Abstract.Interpreter) (V : ValueS with type t = I.value) :
-      S with module I = I = struct
-      module I = I
+    module Make (K : Dep.Kast) : S with module K = K = struct
+      module K = K
 
       module Expr = struct
         type t = {
-          lhs : I.expr;
-          rhs : I.expr;
+          lhs : K.Expr.t;
+          rhs : K.Expr.t;
         }
       end
 
-      let eval : Expr.t -> I.value =
+      let eval : Expr.t -> K.Value.t =
        fun { lhs; rhs } ->
-        add (I.eval lhs |> V.into_addable) (I.eval rhs |> V.into_addable)
-        |> V.from_addable
+        add
+          (K.Interpreter.eval lhs |> K.Value.into_addable)
+          (K.Interpreter.eval rhs |> K.Value.into_addable)
+        |> K.Value.from_addable
     end
   end
 
@@ -131,7 +160,7 @@ module Combined = struct
       | String of Parts.String.Value.t
       | Error of Error.Value.t
 
-    include Parts.Add.ValueS with type t := t
+    include Parts.Add.Dep.Value with type t := t
     include Printable with type t := t
   end = struct
     type t =
@@ -160,30 +189,37 @@ module Combined = struct
 
   and Expr : sig
     type t =
-      | Const of Value.t Parts.Const.Expr.t
+      | Const of Const.Expr.t
       | Add of Add.Expr.t
   end = struct
     type t =
-      | Const of Value.t Parts.Const.Expr.t
+      | Const of Const.Expr.t
       | Add of Add.Expr.t
   end
 
-  and Interpreter :
-    (Abstract.Interpreter with type value = Value.t and type expr = Expr.t) =
-  struct
-    type _unused = unit
-    and expr = Expr.t
-    and value = Value.t
-
-    let rec _unused = ()
-
-    and eval : expr -> value = function
-      | Expr.Const expr -> Parts.Const.Expr.eval expr
+  and Interpreter : sig
+    val eval : Expr.t -> Value.t
+  end = struct
+    let eval : Expr.t -> Value.t = function
+      | Expr.Const expr -> Const.eval expr
       | Expr.Add expr -> Add.eval expr
   end
 
-  and Add : (Parts.Add.S with type I.value = Value.t and type I.expr = Expr.t) =
-    Parts.Add.Make (Interpreter) (Value)
+  and Add :
+    (Parts.Add.S with type K.Value.t = Value.t and type K.Expr.t = Expr.t) =
+    Parts.Add.Make (Kast)
+
+  and Const : (Parts.Const.S with type K.Value.t = Value.t) =
+    Parts.Const.Make (Kast)
+
+  and Kast : sig
+    include Abstract.Kast
+    include Parts.Add.Dep.Kast
+  end = struct
+    module Value = Value
+    module Expr = Expr
+    module Interpreter = Interpreter
+  end
 end
 
 open Combined
