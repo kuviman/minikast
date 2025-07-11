@@ -17,6 +17,10 @@ module All_in_one = struct
         | _ -> Error)
 end
 
+type formatter = Format.formatter
+
+let fprintf = Format.fprintf
+
 module Abstract = struct
   module type Interpreter = sig
     type value
@@ -31,6 +35,7 @@ module Error = struct
     type t = unit
 
     let make () : t = ()
+    let print (fmt : formatter) (() : t) : unit = fprintf fmt "<error>"
   end
 end
 
@@ -48,6 +53,7 @@ module Parts = struct
       type t = int
 
       let add : t -> t -> t = ( + )
+      let print (fmt : formatter) (value : t) : unit = fprintf fmt "%d" value
     end
   end
 
@@ -69,16 +75,23 @@ module Parts = struct
       val from_addable : addable -> t
     end
 
-    module type S = functor (I : Abstract.Interpreter) -> sig
+    module type S = sig
+      module I : Abstract.Interpreter
+
       module Expr : sig
-        type t
+        type t = {
+          lhs : I.expr;
+          rhs : I.expr;
+        }
       end
 
       val eval : Expr.t -> I.value
     end
 
-    module Make (I : Abstract.Interpreter) (V : ValueS with type t = I.value) =
-    struct
+    module Make (I : Abstract.Interpreter) (V : ValueS with type t = I.value) :
+      S with module I = I = struct
+      module I = I
+
       module Expr = struct
         type t = {
           lhs : I.expr;
@@ -98,17 +111,28 @@ module Parts = struct
       type t = string
 
       let add : t -> t -> t = ( ^ )
+      let print (fmt : formatter) (value : t) : unit = fprintf fmt "%S" value
     end
   end
+end
+
+module type Printable = sig
+  type t
+
+  val print : formatter -> t -> unit
 end
 
 module Combined = struct
   module rec Unused : sig end = struct end
 
   and Value : sig
-    type t
+    type t =
+      | Int of Parts.Int.Value.t
+      | String of Parts.String.Value.t
+      | Error of Error.Value.t
 
     include Parts.Add.ValueS with type t := t
+    include Printable with type t := t
   end = struct
     type t =
       | Int of Parts.Int.Value.t
@@ -126,30 +150,52 @@ module Combined = struct
       match value with
       | Int x -> Int x
       | Error x -> Error x
+
+    let print (fmt : formatter) (value : t) : unit =
+      match value with
+      | Int value -> Parts.Int.Value.print fmt value
+      | String value -> Parts.String.Value.print fmt value
+      | Error value -> Error.Value.print fmt value
   end
 
-  and Interpreter : (Abstract.Interpreter with type value = Value.t) = struct
+  and Expr : sig
+    type t =
+      | Const of Value.t Parts.Const.Expr.t
+      | Add of Add.Expr.t
+  end = struct
+    type t =
+      | Const of Value.t Parts.Const.Expr.t
+      | Add of Add.Expr.t
+  end
+
+  and Interpreter :
+    (Abstract.Interpreter with type value = Value.t and type expr = Expr.t) =
+  struct
     type _unused = unit
-
-    and expr =
-      | E_Const of value Parts.Const.Expr.t
-      | E_Add of Add.Expr.t
-
+    and expr = Expr.t
     and value = Value.t
 
     let rec _unused = ()
 
     and eval : expr -> value = function
-      | E_Const expr -> Parts.Const.Expr.eval expr
-      | E_Add expr -> Add.eval expr
+      | Expr.Const expr -> Parts.Const.Expr.eval expr
+      | Expr.Add expr -> Add.eval expr
   end
 
-  and Add : sig
-    module Expr : sig
-      type t
-    end
-
-    val eval : Expr.t -> Value.t
-  end =
+  and Add : (Parts.Add.S with type I.value = Value.t and type I.expr = Expr.t) =
     Parts.Add.Make (Interpreter) (Value)
 end
+
+open Combined
+
+let () =
+  let e : Expr.t =
+    Add
+      {
+        lhs = Const { value = Int 2 };
+        rhs =
+          Add { lhs = Const { value = Int 3 }; rhs = Const { value = Int 4 } };
+      }
+  in
+  let result = Interpreter.eval e in
+  Format.printf "%a\n" Value.print result

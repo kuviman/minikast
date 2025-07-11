@@ -16,6 +16,12 @@
             ocamlPackages.dune_3
             nixfmt-classic
           ];
+          shellHook = ''
+            echo 'Hello from minikast devshell'
+            export OCAML_BACKTRACE=1
+            export OCAMLRUNPARAM=b
+            export DUNE_CONFIG__GLOBAL_LOCK=disabled
+          '';
         };
       };
       formatter.${system} = pkgs.nixfmt-classic;
