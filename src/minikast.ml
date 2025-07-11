@@ -135,6 +135,63 @@ module Parts = struct
     end
   end
 
+  module Mul = struct
+    type mulable =
+      | Error of Error.Value.t
+      | Int of Int.Value.t
+
+    let add : mulable -> mulable -> mulable =
+     fun a b ->
+      match (a, b) with
+      | Error _, _ | _, Error _ -> Error (Error.Value.make ())
+      | Int a, Int b -> Int (a + b)
+
+    module Dep = struct
+      module type Value = sig
+        type t
+
+        val into_mulable : t -> mulable
+        val from_mulable : mulable -> t
+      end
+
+      module type Kast = sig
+        module Value : Value
+        include Abstract.Kast with module Value := Value
+      end
+    end
+
+    module type S = sig
+      module K : Dep.Kast
+
+      module Expr : sig
+        type t = {
+          lhs : K.Expr.t;
+          rhs : K.Expr.t;
+        }
+      end
+
+      val eval : Expr.t -> K.Value.t
+    end
+
+    module Make (K : Dep.Kast) : S with module K = K = struct
+      module K = K
+
+      module Expr = struct
+        type t = {
+          lhs : K.Expr.t;
+          rhs : K.Expr.t;
+        }
+      end
+
+      let eval : Expr.t -> K.Value.t =
+       fun { lhs; rhs } ->
+        add
+          (K.Interpreter.eval lhs |> K.Value.into_mulable)
+          (K.Interpreter.eval rhs |> K.Value.into_mulable)
+        |> K.Value.from_mulable
+    end
+  end
+
   module String = struct
     module Value = struct
       type t = string
@@ -161,6 +218,7 @@ module Combined = struct
       | Error of Error.Value.t
 
     include Parts.Add.Dep.Value with type t := t
+    include Parts.Mul.Dep.Value with type t := t
     include Printable with type t := t
   end = struct
     type t =
@@ -180,6 +238,18 @@ module Combined = struct
       | Int x -> Int x
       | Error x -> Error x
 
+    let into_mulable (value : t) : Parts.Mul.mulable =
+      let fail () : Parts.Mul.mulable = Error (Error.Value.make ()) in
+      match value with
+      | Int x -> Int x
+      | Error x -> Error x
+      | String _ -> fail ()
+
+    let from_mulable (value : Parts.Mul.mulable) : t =
+      match value with
+      | Int x -> Int x
+      | Error x -> Error x
+
     let print (fmt : formatter) (value : t) : unit =
       match value with
       | Int value -> Parts.Int.Value.print fmt value
@@ -191,10 +261,12 @@ module Combined = struct
     type t =
       | Const of Const.Expr.t
       | Add of Add.Expr.t
+      | Mul of Mul.Expr.t
   end = struct
     type t =
       | Const of Const.Expr.t
       | Add of Add.Expr.t
+      | Mul of Mul.Expr.t
   end
 
   and Interpreter : sig
@@ -203,18 +275,35 @@ module Combined = struct
     let eval : Expr.t -> Value.t = function
       | Expr.Const expr -> Const.eval expr
       | Expr.Add expr -> Add.eval expr
+      | Expr.Mul expr -> Mul.eval expr
   end
 
   and Add :
     (Parts.Add.S with type K.Value.t = Value.t and type K.Expr.t = Expr.t) =
     Parts.Add.Make (Kast)
 
+  and Mul :
+    (Parts.Mul.S with type K.Value.t = Value.t and type K.Expr.t = Expr.t) =
+    Parts.Mul.Make (Kast)
+
   and Const : (Parts.Const.S with type K.Value.t = Value.t) =
     Parts.Const.Make (Kast)
 
   and Kast : sig
-    include Abstract.Kast
-    include Parts.Add.Dep.Kast
+    module Value : sig
+      type t
+
+      include Parts.Add.Dep.Value with type t := t
+      include Parts.Mul.Dep.Value with type t := t
+    end
+
+    module Expr : sig
+      type t
+    end
+
+    module Interpreter : sig
+      val eval : Expr.t -> Value.t
+    end
   end = struct
     module Value = Value
     module Expr = Expr
