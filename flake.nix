@@ -1,23 +1,23 @@
 {
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-  };
+  inputs = { nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable"; };
 
   outputs = inputs:
     let
       system = "x86_64-linux";
       pkgs = import inputs.nixpkgs { inherit system; };
-    in
-    {
+    in {
       devShells.${system} = {
         default = pkgs.mkShell {
           packages = with pkgs; [
             just
             ocaml
             ocamlPackages.ocaml-lsp
+            ocamlPackages.ocamlformat
+            ocamlPackages.dune_3
+            nixfmt-classic
           ];
         };
       };
-      formatter.${system} = pkgs.nixpkgs-fmt;
+      formatter.${system} = pkgs.nixfmt-classic;
     };
 }
