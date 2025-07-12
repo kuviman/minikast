@@ -1,5 +1,6 @@
 open Prelude
 open Combined
+module Play = Play
 
 let () =
   let e : Expr.t =
